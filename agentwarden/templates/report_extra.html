@@ -1,0 +1,16 @@
+{% if extra.agw %}
+{% set d = extra.agw %}
+<section class="card">
+  <h2>Non-human identity posture</h2>
+  <div class="stat-line"><span>Identities analysed</span><strong>{{ d.total }}</strong></div>
+  <div class="stat-line"><span>AI agents (registered / found)</span><strong>{{ d.agents_registered }} / {{ d.agents }}</strong></div>
+  <div class="stat-line"><span>Identities with tier-0 permissions or privileged roles</span><strong>{{ d.privileged }}</strong></div>
+  <div class="stat-line"><span>ML outliers</span><strong>{{ d.anomaly_count }}</strong></div>
+  <div class="stat-line"><span>Without an accountable owner</span><strong>{{ d.unowned }}</strong></div>
+  <h3>Highest-risk identities</h3>
+  <table class="table compact">
+    <thead><tr><th>Score</th><th>Identity</th><th>Type</th></tr></thead>
+    <tbody>{% for i in d.top[:8] %}<tr><td><span class="score score-{{ i.analysis.risk_band }}">{{ i.analysis.risk_score }}</span></td><td>{{ i.displayName }}</td><td>{{ i.analysis.classification_label }}</td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+{% endif %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "macros.html" import empty %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Governance register</h1>
+    <p class="muted">Purpose, ownership, data classification, model provider and approved permissions for each AI agent and sensitive integration. Approved permissions drive the drift rule (AGW-013).</p>
+  </div>
+  <a class="btn btn-ghost" href="/registry.csv">Export CSV</a>
+</div>
+
+{% if unregistered %}
+<section class="card">
+  <h2>AI agents waiting to be registered ({{ unregistered|length }})</h2>
+  <div class="table-wrap">
+  <table class="table compact">
+    <thead><tr><th>Identity</th><th>Risk</th><th>Matched on</th><th></th></tr></thead>
+    <tbody>
+    {% for i in unregistered %}
+    <tr><td>{{ i.displayName }}</td><td><span class="score score-{{ i.analysis.risk_band }}">{{ i.analysis.risk_score }}</span></td><td class="small muted">{{ i.analysis.keyword_hits|join(", ") }}</td><td><a class="btn btn-sm" href="/identities/{{ i.id }}">Register</a></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+{% if regs %}
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>Identity</th><th>Classification</th><th>Owners</th><th>Purpose</th><th>Data</th><th>Model / provider</th><th>Human in loop</th><th>Next review</th></tr></thead>
+  <tbody>
+  {% for r in regs %}
+  <tr>
+    <td>{% if r.identity %}<a href="/identities/{{ r.identity_id }}"><strong>{{ r.display_name }}</strong></a>{% else %}<strong>{{ r.display_name }}</strong><div class="small text-warn">not seen in latest scan</div>{% endif %}</td>
+    <td>{{ class_labels.get(r.classification, r.classification) }}</td>
+    <td class="small">{{ r.business_owner or "—" }}<div class="muted">{{ r.technical_owner or "" }}</div></td>
+    <td class="small">{{ r.purpose or "—" }}</td>
+    <td>{% if r.data_classification in ("Confidential", "Restricted") %}<span class="tag tag-warn">{{ r.data_classification }}</span>{% else %}<span class="tag">{{ r.data_classification or "—" }}</span>{% endif %}</td>
+    <td class="small">{{ r.model_provider or "—" }}</td>
+    <td>{{ "Yes" if r.human_in_loop else "No" }}</td>
+    <td class="{{ 'text-danger' if r.overdue }}">{{ r.next_review|dt if r.next_review else "never reviewed" }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+{{ empty("No register entries yet. Open an identity and add it to the register.") }}
+{% endif %}
+{% endblock %}

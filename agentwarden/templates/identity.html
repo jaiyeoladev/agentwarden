@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% from "macros.html" import findings_table, csrf_field with context %}
+{% block content %}
+<p class="crumbs"><a href="/identities">Identities</a> / {{ i.displayName }}</p>
+<div class="page-head">
+  <div>
+    <h1>{{ i.displayName }}</h1>
+    <p><span class="score score-{{ a.risk_band }}">{{ a.risk_score }}</span>
+      <span class="tag {{ 'tag-accent' if a.classification == 'ai_agent' }}">{{ a.classification_label }}</span>
+      <span class="tag">{{ i.type }}</span>
+      {% if i.external %}<span class="tag tag-warn">External · {{ i.publisher }}</span>{% endif %}
+      {% if a.anomaly %}<span class="tag tag-danger">ML outlier</span>{% endif %}
+      {% if a.keyword_hits and a.keyword_hits != ["register"] %}<span class="small muted">matched: {{ a.keyword_hits|join(", ") }}</span>{% endif %}
+    </p>
+  </div>
+</div>
+
+<div class="grid grid-2-1">
+  <div>
+    <section class="card">
+      <h2>Active findings ({{ findings|length }})</h2>
+      {% if findings %}{{ findings_table(findings) }}{% else %}<p class="muted">No active findings.</p>{% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Application permissions ({{ perms|length }})</h2>
+      {% if perms %}
+      <div class="table-wrap">
+      <table class="table compact">
+        <thead><tr><th>Permission</th><th>Resource</th><th>Tier</th><th>Access</th>{% if reg and reg.approved_permissions %}<th>Approved</th>{% endif %}</tr></thead>
+        <tbody>
+        {% for p in perms %}
+        <tr>
+          <td><code>{{ p.permission }}</code></td>
+          <td>{{ p.resource }}</td>
+          <td>{% if p.tier == 0 %}<span class="tag tag-danger">Tier 0</span>{% elif p.tier == 1 %}<span class="tag tag-warn">Tier 1</span>{% elif p.tier == 2 %}<span class="tag">Tier 2</span>{% else %}<span class="tag">Tier 3</span>{% endif %}</td>
+          <td>{{ "Write" if p.write else "Read" }}</td>
+          {% if reg and reg.approved_permissions %}<td>{% if p.permission in approved %}<span class="text-ok">✓</span>{% else %}<span class="text-danger">not approved</span>{% endif %}</td>{% endif %}
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}<p class="muted">No application permissions granted.</p>{% endif %}
+
+      {% if i.delegated %}
+      <h3>Delegated consents</h3>
+      <div class="table-wrap">
+      <table class="table compact">
+        <thead><tr><th>Scope</th><th>Resource</th><th>Consent</th></tr></thead>
+        <tbody>{% for d in i.delegated %}<tr><td><code>{{ d.scope }}</code></td><td>{{ d.resource }}</td><td>{% if d.consentType == "AllPrincipals" %}<span class="tag tag-warn">All users</span>{% else %}Single user{% endif %}</td></tr>{% endfor %}</tbody>
+      </table>
+      </div>
+      {% endif %}
+      {% if i.roles %}
+      <h3>Directory roles</h3>
+      <p>{% for r in i.roles %}<span class="tag tag-danger">{{ r }}</span>{% endfor %}</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Credentials</h2>
+      {% if i.credentials %}
+      <div class="table-wrap">
+      <table class="table compact">
+        <thead><tr><th>Type</th><th>Name</th><th>Created</th><th>Expires</th></tr></thead>
+        <tbody>
+        {% for c in i.credentials %}
+        {% set d = c.end|days_until if c.end else none %}
+        <tr><td><span class="tag {{ 'tag-warn' if c.type == 'password' else 'tag-ok' }}">{{ c.type }}</span></td><td>{{ c.name }}{% if c.subject %}<div class="small muted">{{ c.subject }}</div>{% endif %}</td><td>{{ c.start|dt }}</td>
+          <td class="{{ 'text-danger' if d is not none and d < 30 }}">{% if c.end %}{{ c.end|dt }} <span class="small muted">({{ "expired" if d < 0 else "in " ~ d ~ "d" }})</span>{% else %}—{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p class="muted">{{ "Credentials are managed by Azure for managed identities." if i.type == "ManagedIdentity" else "No credentials attached." }}</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <aside>
+    <section class="card">
+      <h2>Overview</h2>
+      <dl class="kv">
+        <dt>App ID</dt><dd><code>{{ i.appId }}</code></dd>
+        <dt>Object ID</dt><dd><code>{{ i.id }}</code></dd>
+        <dt>Publisher</dt><dd>{{ i.publisher or "—" }}</dd>
+        <dt>Audience</dt><dd>{{ i.signInAudience or "—" }}</dd>
+        <dt>Created</dt><dd>{{ i.created|dt }}</dd>
+        <dt>Last sign-in</dt><dd>{% if i.signinKnown %}{{ i.lastSignIn|dtt if i.lastSignIn else "never" }}{% else %}unknown{% endif %}</dd>
+        <dt>Owners</dt><dd>{% for o in i.owners %}<div>{{ o.name }} <span class="small muted">{{ o.upn }}</span></div>{% else %}{{ "Azure resource (managed identity)" if i.type == "ManagedIdentity" else "None" }}{% endfor %}</dd>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>Anomaly analysis</h2>
+      <p>Score <strong>{{ "%.2f"|format(a.anomaly_score) }}</strong> <span class="small muted">({{ a.anomaly_method or "not run" }}; 1.00 = most unusual in the estate)</span></p>
+      {% if a.anomaly_reasons %}
+      <div class="explain">
+        {% for r in a.anomaly_reasons %}
+        <div class="explain-row"><span>{{ r.label }}</span><span><strong>{{ r.value }}</strong> <span class="small muted">vs median {{ r.peer_median }}</span></span></div>
+        {% endfor %}
+      </div>
+      {% else %}<p class="muted small">Nothing unusual compared with peers.</p>{% endif %}
+      <details class="subtle"><summary>Feature vector</summary>
+        <div class="explain">{% for label, v in feats %}<div class="explain-row small"><span>{{ label }}</span><span>{{ v }}</span></div>{% endfor %}</div>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2>Governance register</h2>
+      {% if not reg %}<p class="small muted">Not registered yet.{% if a.classification == "ai_agent" %} AI agents must be registered.{% endif %}</p>{% endif %}
+      <form method="post" action="/identities/{{ i.id }}/register" class="form">
+        {{ csrf_field() }}
+        <fieldset class="form" {{ 'disabled' if not is_admin }}>
+        <label>Classification
+          <select name="classification">{% for k, label in class_labels.items() %}<option value="{{ k }}" {{ 'selected' if (reg.classification if reg else a.classification) == k }}>{{ label }}</option>{% endfor %}</select>
+        </label>
+        <label>Business owner <input name="business_owner" value="{{ reg.business_owner if reg else '' }}" maxlength="120"></label>
+        <label>Technical owner <input name="technical_owner" value="{{ reg.technical_owner if reg else '' }}" maxlength="120"></label>
+        <label>Purpose <textarea name="purpose" rows="2" maxlength="1000">{{ reg.purpose if reg else '' }}</textarea></label>
+        <label>Data classification
+          <select name="data_classification">{% for d in data_classes %}<option {{ 'selected' if reg and reg.data_classification == d }}>{{ d }}</option>{% endfor %}</select>
+        </label>
+        <label>Model / provider <input name="model_provider" value="{{ reg.model_provider if reg else '' }}" maxlength="120" placeholder="e.g. Azure OpenAI GPT-4o"></label>
+        <label class="check"><input type="checkbox" name="human_in_loop" {{ 'checked' if reg and reg.human_in_loop }}> A human approves actions that change or send data</label>
+        <label>Approved permissions <textarea name="approved_permissions" rows="4" class="mono" placeholder="One per line">{{ reg.approved_permissions if reg else perms|map(attribute="permission")|join("\n") }}</textarea></label>
+        <label>Review every (days) <input name="review_interval_days" type="number" min="7" max="730" value="{{ reg.review_interval_days if reg else 90 }}"></label>
+        <label>Last reviewed <input name="last_reviewed" type="date" value="{{ reg.last_reviewed if reg and reg.last_reviewed else '' }}"></label>
+        <label class="check"><input type="checkbox" name="mark_reviewed"> Record a review today</label>
+        <label>Notes <textarea name="notes" rows="2" maxlength="2000">{{ reg.notes if reg else '' }}</textarea></label>
+        </fieldset>
+        {% if is_admin %}<button class="btn" type="submit">{{ "Update register" if reg else "Add to register" }}</button>{% endif %}
+      </form>
+      {% if reg and is_admin %}
+      <form method="post" action="/identities/{{ i.id }}/unregister" class="btn-row">{{ csrf_field() }}<button class="btn btn-ghost btn-sm" type="submit" data-confirm="Remove this register entry?">Remove from register</button></form>
+      {% endif %}
+    </section>
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,19 @@
+services:
+  agentwarden:
+    build: .
+    image: agentwarden:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - agentwarden-data:/data
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  agentwarden-data:

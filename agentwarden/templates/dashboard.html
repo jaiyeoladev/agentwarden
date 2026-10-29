@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "macros.html" import kpi, empty %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+{% if not scan %}
+  {{ empty("No completed scan yet. Run a scan to inventory your non-human identities.", "/scans", "Go to scans") }}
+{% else %}
+<div class="page-head">
+  <div>
+    <h1>{{ tenant.name or "Non-human identity overview" }}</h1>
+    <p class="muted">Scan #{{ scan.id }} · {{ scan.started_at|dtt }} · {{ total }} service principals, managed identities and agents analysed</p>
+  </div>
+  <a class="btn btn-ghost" href="/report" target="_blank" rel="noopener">Printable report</a>
+</div>
+
+<section class="kpis">
+  {{ kpi("AI agents found", agents, agents_registered ~ " of " ~ agents ~ " in the register", "", "/identities?cls=ai_agent") }}
+  {{ kpi("Tier-0 or privileged-role", privileged, "identities that could take over the tenant", "kpi-danger", "/findings?rule=AGW-001") }}
+  {{ kpi("ML outliers", anomaly_count, "over-privileged compared with peers", "kpi-warn", "/anomalies") }}
+  {{ kpi("No accountable owner", unowned, "identities without an owner", "", "/findings?rule=AGW-004") }}
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>Risk distribution</h2><span class="small muted">0–100 score per identity</span></div>
+  {{ charts.stacked(band_segments) }}
+  <div class="legend"><span class="l-critical">Critical {{ bands.critical or 0 }}</span><span class="l-high">High {{ bands.high or 0 }}</span><span class="l-medium">Medium {{ bands.medium or 0 }}</span><span class="l-info">Low {{ bands.low or 0 }}</span></div>
+</section>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><h2>Highest-risk identities</h2><a class="small" href="/identities">Inventory →</a></div>
+    <div class="table-wrap">
+    <table class="table compact">
+      <thead><tr><th>Score</th><th>Identity</th><th>Type</th></tr></thead>
+      <tbody>
+      {% for i in top %}
+      <tr>
+        <td><span class="score score-{{ i.analysis.risk_band }}">{{ i.analysis.risk_score }}</span></td>
+        <td><a href="/identities/{{ i.id }}">{{ i.displayName }}</a>{% if i.analysis.anomaly %} <span class="tag tag-danger">outlier</span>{% endif %}</td>
+        <td><span class="tag {{ 'tag-accent' if i.analysis.classification == 'ai_agent' }}">{{ i.analysis.classification_label }}</span></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Findings by rule</h2><a class="small" href="/findings">All findings →</a></div>
+    {{ charts.hbar(rule_counts, label_width=250) }}
+  </section>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Most-granted high-risk permissions</h2>
+    {{ charts.hbar(top_perms, label_width=230, empty="No tier-0 or tier-1 permissions granted") }}
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Biggest outliers</h2><a class="small" href="/anomalies">Anomalies →</a></div>
+    {% for i in anomalies %}
+    <div class="stat-line">
+      <span><a href="/identities/{{ i.id }}">{{ i.displayName }}</a>
+        <div class="small muted">{% for r in i.analysis.anomaly_reasons[:2] %}{{ r.label }}: {{ r.value }} vs {{ r.peer_median }}{{ "; " if not loop.last }}{% endfor %}</div></span>
+      <strong>{{ "%.2f"|format(i.analysis.anomaly_score) }}</strong>
+    </div>
+    {% else %}
+    <p class="muted">No statistical outliers in this scan.</p>
+    {% endfor %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Identity types</h2>
+  {{ charts.hbar(by_class, width=1200, label_width=220) }}
+</section>
+{% endif %}
+{% endblock %}

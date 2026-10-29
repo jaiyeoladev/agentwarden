@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "macros.html" import empty %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Identity inventory</h1>
+    <p class="muted">{{ rows|length }} shown · risk score combines privilege, ownership, credential hygiene, activity and ML outlier status</p>
+  </div>
+</div>
+<form class="filters card" method="get" action="/identities">
+  <label>Type
+    <select name="cls">
+      <option value="">All types</option>
+      {% for k, label in class_labels.items() %}{% if counts.get(k) %}<option value="{{ k }}" {{ 'selected' if cls == k }}>{{ label }} ({{ counts[k] }})</option>{% endif %}{% endfor %}
+    </select>
+  </label>
+  <label>Risk
+    <select name="band">
+      <option value="">Any</option>
+      {% for b in ["critical","high","medium","low"] %}<option value="{{ b }}" {{ 'selected' if band == b }}>{{ b|capitalize }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Sort
+    <select name="sort">
+      <option value="risk" {{ 'selected' if sort == 'risk' }}>Risk score</option>
+      <option value="anomaly" {{ 'selected' if sort == 'anomaly' }}>Anomaly score</option>
+      <option value="name" {{ 'selected' if sort == 'name' }}>Name</option>
+    </select>
+  </label>
+  <label class="grow">Search <input name="q" value="{{ q }}" placeholder="Name, app ID or publisher"></label>
+  <button class="btn" type="submit">Apply</button>
+</form>
+{% if rows %}
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>Risk</th><th>Identity</th><th>Type</th><th>Permissions</th><th>Roles</th><th>Owners</th><th>Credentials</th><th>Last sign-in</th><th>Register</th></tr></thead>
+  <tbody>
+  {% for i in rows %}
+  {% set a = i.analysis %}
+  <tr>
+    <td><span class="score score-{{ a.risk_band }}">{{ a.risk_score }}</span></td>
+    <td><a href="/identities/{{ i.id }}"><strong>{{ i.displayName }}</strong></a>{% if a.anomaly %} <span class="tag tag-danger">outlier</span>{% endif %}<div class="small muted">{{ i.publisher or "—" }}{% if i.external %} · external{% endif %}</div></td>
+    <td><span class="tag {{ 'tag-accent' if a.classification == 'ai_agent' }}">{{ a.classification_label }}</span></td>
+    <td class="nowrap">{% if a.tier0 %}<span class="tag tag-danger">T0 × {{ a.tier0 }}</span>{% endif %}{% if a.tier1 %}<span class="tag tag-warn">T1 × {{ a.tier1 }}</span>{% endif %}<span class="small muted">{{ i.appPermissions|length }} app</span>{% if i.delegated %} <span class="small muted">· {{ i.delegated|length }} delegated</span>{% endif %}</td>
+    <td>{% for r in i.roles %}<span class="tag tag-danger">{{ r }}</span>{% else %}<span class="muted">—</span>{% endfor %}</td>
+    <td>{% if i.type == "ManagedIdentity" %}<span class="muted small">Azure resource</span>{% elif i.owners %}{{ i.owners|length }}{% else %}<span class="text-danger">none</span>{% endif %}</td>
+    <td class="small">{% set kinds = i.credentials|map(attribute="type")|list %}{% if not kinds %}<span class="muted">{{ "managed" if i.type == "ManagedIdentity" else "none" }}</span>{% endif %}{% for k in kinds|unique %}<span class="tag {{ 'tag-warn' if k == 'password' else 'tag-ok' }}">{{ k }}{% if kinds.count(k) > 1 %} × {{ kinds.count(k) }}{% endif %}</span>{% endfor %}</td>
+    <td>{% if i.signinKnown %}<span class="{{ 'text-danger' if a.dormant }}">{{ i.lastSignIn|ago }}</span>{% else %}<span class="muted">unknown</span>{% endif %}</td>
+    <td>{% if a.registered %}<span class="tag tag-ok">registered</span>{% elif a.classification == "ai_agent" %}<span class="tag tag-warn">missing</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+{{ empty("No identities match.") }}
+{% endif %}
+{% endblock %}

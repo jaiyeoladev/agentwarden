@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "macros.html" import empty %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Anomaly detection</h1>
+    <p class="muted">{% if enabled %}Model: <strong>{{ method or "not run yet" }}</strong>. Each identity is described by {{ features|length }} privilege and hygiene features (log-scaled). The model scores how isolated each one is from the rest of the estate; robust z-scores against the peer median explain why.{% else %}Anomaly detection is turned off in <a href="/settings">Settings</a>.{% endif %}</p>
+  </div>
+</div>
+
+{% if rows %}
+<section class="card">
+  <h2>Top 20 by anomaly score</h2>
+  {{ charts.hbar(chart, max_value=1.0, label_width=250) }}
+  <p class="small muted">Red bars are flagged outliers (AGW-014). Only outliers with privilege-related drivers are flagged, so unusual-but-harmless identities do not create noise.</p>
+</section>
+
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th class="num">Score</th><th>Identity</th><th>Type</th><th>Why it stands out</th><th>Risk</th></tr></thead>
+  <tbody>
+  {% for i in rows %}
+  {% set a = i.analysis %}
+  <tr>
+    <td class="num"><strong class="{{ 'text-danger' if a.anomaly }}">{{ "%.2f"|format(a.anomaly_score) }}</strong></td>
+    <td><a href="/identities/{{ i.id }}">{{ i.displayName }}</a>{% if a.anomaly %} <span class="tag tag-danger">flagged</span>{% endif %}</td>
+    <td>{{ a.classification_label }}</td>
+    <td class="small">{% for r in a.anomaly_reasons %}<div>{{ r.label }}: <strong>{{ r.value }}</strong> <span class="muted">(median {{ r.peer_median }}, z={{ r.z }})</span></div>{% else %}<span class="muted">—</span>{% endfor %}</td>
+    <td><span class="score score-{{ a.risk_band }}">{{ a.risk_score }}</span></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<section class="card">
+  <h2>Features used</h2>
+  <ul class="checklist">{% for k, label in features %}<li>{{ label }} <code>{{ k }}</code></li>{% endfor %}</ul>
+</section>
+{% else %}
+{{ empty("Run a scan to score identities.", "/scans", "Go to scans") }}
+{% endif %}
+{% endblock %}
